@@ -66,12 +66,9 @@ class GameState():
         # if en passant move, must update the board to capture the pawn
         if move.enPassant:
             self.board[move.startRow][move.endCol] = "--"
-        # if pawn promotion change piece
+        # if pawn promotion change piece - the caller sets move.promotionChoice, we just apply it
         if move.pawnPromotion:
-            promotedPiece = ""
-            while promotedPiece not in ('Q', 'R', 'B', 'N'): # keep asking until the answer is usable
-                promotedPiece = input("Promote to Q, R, B, or N: ").strip().upper()
-            self.board[move.endRow][move.endCol] = move.pieceMoved[0] + promotedPiece # colour of the pawn + new piece type
+            self.board[move.endRow][move.endCol] = move.pieceMoved[0] + move.promotionChoice # colour of the pawn + new piece type
         
         # castle move
         if move.isCastleMove:
@@ -198,15 +195,25 @@ class GameState():
                 # get rid of any moves that don't block check or move king
                 for i in range(len(moves) - 1, -1, -1): # go through backwards when you are removing from a list as iterating
                     if moves[i].pieceMoved[1] != 'K': # move doesn't move king so it must block or capture
+                        # an en-passant capture lands on an empty square, not on the pawn it takes,
+                        # so it never matches validSquares even when it removes the checking pawn
+                        if moves[i].enPassant and (moves[i].startRow, moves[i].endCol) == (checkRow, checkCol):
+                            continue
                         if not (moves[i].endRow, moves[i].endCol) in validSquares: # move doesn't block check or capurte piece
-                            moves.remove(moves[i])
+                            del moves[i]
             else: # double check, king has to move
                 self.getKingMoves(kingRow, kingCol, moves)
         else: # not in check, so all moves are valid
             moves = self.getAllPossibleMoves()
-            # castling is only legal when we are not already in check.
-            # this must come after getAllPossibleMoves - squareUnderAttack() consumes self.pins
+            # castling is only legal when we are not already in check
             self.getCastleMoves(kingRow, kingCol, moves)
+
+        # an en-passant capture takes two pawns off the same rank at once, which can expose our
+        # own king to a rook or queen along it. neither pawn is pinned on its own, so the pin
+        # logic cannot see this - play the capture out on the board and look.
+        for i in range(len(moves) - 1, -1, -1):
+            if moves[i].enPassant and not self.enPassantMoveIsLegal(moves[i]):
+                del moves[i]
 
         if len(moves) == 0:
             if self.inCheck:
@@ -220,19 +227,62 @@ class GameState():
     
     
     '''
+    Make an en-passant capture on the board, see if it leaves our own king attacked, then take it back
+    '''
+    def enPassantMoveIsLegal(self, move):
+        kingRow, kingCol = self.whiteKingLocation if self.whiteToMove else self.blackKingLocation
+        capturedRow, capturedCol = move.startRow, move.endCol # the captured pawn stays on the moving pawn's rank
+        capturedPiece = self.board[capturedRow][capturedCol]
+        self.board[move.endRow][move.endCol] = move.pieceMoved
+        self.board[move.startRow][move.startCol] = "--"
+        self.board[capturedRow][capturedCol] = "--"
+        legal = not self.squareUnderAttack(kingRow, kingCol)
+        self.board[move.startRow][move.startCol] = move.pieceMoved
+        self.board[move.endRow][move.endCol] = "--"
+        self.board[capturedRow][capturedCol] = capturedPiece
+        return legal
+
+
+    '''
     Determine if the enemy can attack the square r, c
     '''
     def squareUnderAttack(self, r, c):
-        # the move generators consume self.pins as they go, so keep a copy and put it back
-        savedPins = self.pins
-        self.pins = []
-        self.whiteToMove = not self.whiteToMove # switch to opponents point of view
-        oppMoves = self.getAllPossibleMoves()
-        self.whiteToMove = not self.whiteToMove # switch the turns back
-        self.pins = savedPins
-        for move in oppMoves:
-            if move.endRow == r and move.endCol == c: # square is under attack
-                return True
+        # look outward from the square itself rather than generating every enemy move.
+        # generating moves gets this wrong for pawns: a pawn's diagonal capture is only
+        # generated when something is standing there, so an empty but guarded square would
+        # look safe, and a pawn's forward push would wrongly count as an attack.
+        enemyColor = 'b' if self.whiteToMove else 'w'
+        directions = ((-1, 0), (0, -1), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1))
+        for j in range(len(directions)):
+            d = directions[j]
+            for i in range(1, 8):
+                endRow = r + d[0] * i
+                endCol = c + d[1] * i
+                if not (0 <= endRow < 8 and 0 <= endCol < 8):
+                    break # off board
+                endPiece = self.board[endRow][endCol]
+                if endPiece == "--":
+                    continue
+                if endPiece[0] != enemyColor:
+                    break # our own piece blocks anything further along this line
+                type = endPiece[1]
+                # same 5 cases as checkForPinsAndChecks: rook orthogonally, bishop diagonally,
+                # queen any direction, king or pawn one square away
+                if (0 <= j <= 3 and type == 'R') or \
+                        (4 <= j <= 7 and type == 'B') or \
+                        (type == 'Q') or (i == 1 and type == 'K') or \
+                        (i == 1 and type == 'p' and ((enemyColor == 'w' and 6 <= j <= 7) or (enemyColor == 'b' and 4 <= j <= 5))):
+                    return True
+                break # enemy piece that doesn't attack here still blocks the line
+        # check for knight attacks
+        knightMoves = ((-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1))
+        for m in knightMoves:
+            endRow = r + m[0]
+            endCol = c + m[1]
+            if 0 <= endRow < 8 and 0 <= endCol < 8:
+                endPiece = self.board[endRow][endCol]
+                if endPiece[0] == enemyColor and endPiece[1] == 'N':
+                    return True
         return False
     
     
@@ -569,6 +619,7 @@ class Move():
         self.pieceCaptured = board[self.endRow][self.endCol]
         self.enPassant = enPassant
         self.pawnPromotion = pawnPromotion
+        self.promotionChoice = 'Q' # what a promoting pawn turns into, overridden by the player before the move is made
         if enPassant:
             self.pieceCaptured = 'bp' if self.pieceMoved == 'wp' else 'wp' # en passant captures opposite colored pawn
         self.moveID = self.startRow * 1000 + self.startCol * 100 + self.endRow * 10 + self.endCol
@@ -590,7 +641,7 @@ class Move():
     def getChessNotation(self):
         return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow, self.endCol)
     
-    def getRankFile(self, c, r):
+    def getRankFile(self, r, c):
         return self.colsToFiles[c] + self.rowsToRanks[r]
 
         
