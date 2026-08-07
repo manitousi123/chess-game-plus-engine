@@ -122,6 +122,9 @@ class GameState():
                 else: # queenside
                     self.board[move.endRow][move.endCol-2] = self.board[move.endRow][move.endCol+1]
                     self.board[move.endRow][move.endCol+1] = "--"
+            
+            self.cheeckMate = False
+            self.staleMate = False
     
     
     '''

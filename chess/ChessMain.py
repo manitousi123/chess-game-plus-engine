@@ -42,7 +42,7 @@ def main():
     sqSelected = () # no square is selected, keep track of the last click of the user (tuple: (row, col))
     playerClicks = [] # keep track of player clicks (two tuples: [(6, 4), (4, 4)])
     gameOver = False
-    playerOne = False # If a human is playing white, then this will be True. If an AI is playing then false
+    playerOne = True # If a human is playing white, then this will be True. If an AI is playing then false
     playerTwo = False # Same as above but for black
     while running:
         humanTurn = (gs.whiteToMove and playerOne) or (not gs.whiteToMove and playerTwo)
@@ -88,6 +88,7 @@ def main():
                     playerClicks = []
                     moveMade = True
                     animate = False
+                    gameOver = False
                 if e.key == p.K_r: # reset the board when 'r' is pressed
                     gs = ChessEngine.GameState()
                     validMoves = gs.getValidMoves()
@@ -95,10 +96,11 @@ def main():
                     playerClicks = []
                     moveMade = False
                     animate = False
+                    gameOver = False
         
         # AI move finder logic
         if not gameOver and not humanTurn:
-            AIMove = ChessAI.findBestMove(gs, validMoves)
+            AIMove = ChessAI.findBestMoveMinMax(gs, validMoves)
             if AIMove is None:
                 AIMove = ChessAI.findRandomMove(validMoves)
             gs.makeMove(AIMove)
