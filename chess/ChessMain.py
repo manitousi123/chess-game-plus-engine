@@ -100,7 +100,7 @@ def main():
         
         # AI move finder logic
         if not gameOver and not humanTurn:
-            AIMove = ChessAI.findBestMoveMinMax(gs, validMoves)
+            AIMove = ChessAI.findBestMove(gs, validMoves)
             if AIMove is None:
                 AIMove = ChessAI.findRandomMove(validMoves)
             gs.makeMove(AIMove)
