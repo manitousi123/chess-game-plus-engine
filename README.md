@@ -94,7 +94,6 @@ something it has found. How far ahead it looks is the `DEPTH` setting at the top
 It is kept low so the computer answers quickly; raising it makes it play better but think for
 noticeably longer, since each extra step multiplies the number of positions it has to look at.
 
-## Known bugs
+## Ideas for later
 
-Two problems with en passant are written up in [bugs.md](bugs.md), including where they are and
-roughly how to fix them.
+Things worth adding next are written up in [improvements.md](improvements.md).

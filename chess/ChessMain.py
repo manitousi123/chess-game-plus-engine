@@ -7,6 +7,7 @@ import random
 import pygame as p
 import ChessEngine
 import ChessAI
+from multiprocessing import Process, Queue
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -130,6 +131,22 @@ def playMoveSound(gs):
 
 
 '''
+Stop a search that is still running and throw away whatever it was going to answer. Call this
+whenever the position changes underneath it: undo, restart, switching who plays a colour, quitting.
+
+This matters more than it looks. A move worked out for a position that no longer exists is not
+merely useless - makeMove() trusts whatever it is handed and never checks the move is legal, so
+playing a stale one silently corrupts the board (pieces landing on occupied squares, captured
+pieces reappearing on undo). Returns None so the caller can write moveFinderProcess = stopSearch(...).
+'''
+def stopSearch(process):
+    if process is not None and process.is_alive():
+        process.terminate()
+        process.join()
+    return None
+
+
+'''
 The main driver for our code. This will handle user input and updating the graphics.
 '''
 def main():
@@ -154,12 +171,15 @@ def main():
     gameOver = False
     playerOne = True # If a human is playing white, then this will be True. If an AI is playing then false
     playerTwo = True # Same as above but for black
-    thinking = False # the AI is about to search, so we can say so on screen first
+    thinking = False # whether to show the 'Thinking...' note in the side panel
+    moveFinderProcess = None # the running search, or None when the AI is not thinking
+    returnQueue = None # where the running search will post its move
     while running:
         humanTurn = (gs.whiteToMove and playerOne) or (not gs.whiteToMove and playerTwo)
         for e in p.event.get():
             if e.type == p.QUIT:
                 running = False
+                moveFinderProcess = stopSearch(moveFinderProcess)
             # mouse handler
             elif e.type == p.MOUSEBUTTONDOWN and e.button == 1:
                 button = getButtonUnderMouse(e.pos)
@@ -171,6 +191,7 @@ def main():
                         playerTwo = kind == "human"
                     sqSelected = () # a half finished click belongs to whoever was playing before
                     playerClicks = []
+                    moveFinderProcess = stopSearch(moveFinderProcess) # whoever was thinking is not playing now
                     thinking = False
                     playSound('move')
                 elif not gameOver and humanTurn:
@@ -208,6 +229,8 @@ def main():
             # key handlers
             elif e.type == p.KEYDOWN:
                 if e.key == p.K_z: # undo when 'z' is pressed
+                    moveFinderProcess = stopSearch(moveFinderProcess) # the position it was thinking about is gone
+                    thinking = False
                     gs.undoMove()
                     sqSelected = ()
                     playerClicks = []
@@ -217,6 +240,8 @@ def main():
                     gameOver = False
                     playSound('move')
                 if e.key == p.K_r: # reset the board when 'r' is pressed
+                    moveFinderProcess = stopSearch(moveFinderProcess) # the position it was thinking about is gone
+                    thinking = False
                     gs = ChessEngine.GameState()
                     validMoves = gs.getValidMoves()
                     sqSelected = ()
@@ -230,12 +255,20 @@ def main():
                     soundOn = not soundOn
                     playSound('move') # a click to confirm sound is back on
 
-        # AI move finder logic
+        # AI move finder logic. the search runs in a separate process so that the board stays
+        # clickable while it thinks. moveFinderProcess being None is what says 'no search running' -
+        # everything else follows from that, so there is no way to end up reading a result that
+        # belongs to a search we already gave up on.
         if not gameOver and not humanTurn and running:
-            if not thinking: # draw one frame with the 'thinking' note before we block on the search
+            if moveFinderProcess is None: # start thinking about this position
                 thinking = True
-            else:
-                AIMove = ChessAI.findBestMove(gs, validMoves)
+                returnQueue = Queue() # a separate process has its own memory, so the move comes back through here
+                moveFinderProcess = Process(target=ChessAI.findBestMove, args=(gs, validMoves, returnQueue))
+                moveFinderProcess.daemon = True # don't keep the program alive after the window closes
+                moveFinderProcess.start() # call findBestMove(gs, validMoves, returnQueue)
+            elif not moveFinderProcess.is_alive(): # it has finished, so the move is waiting for us
+                AIMove = returnQueue.get()
+                moveFinderProcess = None
                 if AIMove is None:
                     AIMove = ChessAI.findRandomMove(validMoves)
                 gs.makeMove(AIMove)
@@ -243,7 +276,8 @@ def main():
                 animate = True
                 soundForMove = True
                 thinking = False
-        else:
+        else: # not the AI's turn any more, so anything still searching is working on a dead position
+            moveFinderProcess = stopSearch(moveFinderProcess)
             thinking = False
 
         if moveMade:
