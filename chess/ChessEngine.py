@@ -643,8 +643,28 @@ class Move():
 
     def getChessNotation(self):
         return self.getRankFile(self.startRow, self.startCol) + self.getRankFile(self.endRow, self.endCol)
-    
+
     def getRankFile(self, r, c):
         return self.colsToFiles[c] + self.rowsToRanks[r]
+
+    '''
+    Real chess notation, for the move log. Note that this does not disambiguate between two identical
+    pieces that can both reach the same square (eg. two knights), so it can read 'Nd2' where a full
+    notation would read 'Nbd2'.
+    '''
+    def __str__(self):
+        if self.isCastleMove:
+            return "O-O" if self.endCol == 6 else "O-O-O"
+
+        endSquare = self.getRankFile(self.endRow, self.endCol)
+        capture = self.pieceCaptured != '--'
+
+        if self.pieceMoved[1] == 'p': # pawn moves
+            notation = (self.colsToFiles[self.startCol] + "x" + endSquare) if capture else endSquare
+            if self.pawnPromotion:
+                notation += "=" + self.promotionChoice
+            return notation
+
+        return self.pieceMoved[1] + ("x" if capture else "") + endSquare
 
         
