@@ -90,9 +90,12 @@ check, checkmate and stalemate.
 
 The opponent searches ahead using negamax with alpha-beta pruning — it looks at every reply to
 every move it is considering, and stops exploring lines that have already turned out worse than
-something it has found. How far ahead it looks is the `DEPTH` setting at the top of `ChessAI.py`.
-It is kept low so the computer answers quickly; raising it makes it play better but think for
-noticeably longer, since each extra step multiplies the number of positions it has to look at.
+something it has found. It searches one move ahead, then two, then three, and so on until its time
+is up, then plays the best move from the deepest search it finished. That time is the `THINK_TIME`
+setting at the top of `ChessAI.py`, one second by default; giving it longer makes it play better.
+Positions are scored by material plus a table of good and bad squares for each piece, blended
+between a middlegame and an endgame view, and once the main search runs out it keeps playing out
+captures so it never misjudges an exchange it stopped halfway through.
 
 ## Ideas for later
 

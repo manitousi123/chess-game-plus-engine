@@ -35,10 +35,16 @@ The current sounds are a placeholder and are a bit grating. Replace them with
 softer ones, and give different events their own sound — a normal move, a
 capture, castling, check, and game over.
 
-## 5. Better engine effeciency
+## 5. Even faster engine
 
-We need to refactor the engine such that it is more effecient, so that when our AI improves, the moves can be executed faster. Perhaps we can use a different method of capturing the chess board, different from a 2D array.
+The engine now precomputes every square's lines of sight and the AI uses a transposition table,
+null-move pruning and a capture-only quiescence search, which gets it to about depth 5 or 6 in a
+second. The next big step would be a different board representation than a 2D list of strings
+(bitboards, or a flat list with piece codes), and keeping the evaluation score up to date move by
+move instead of rescanning the board at every leaf.
 
-## 6. Improve our AI
+## 6. Stronger AI
 
-We need to improve how we score the board to make our AI better, we need to find a formula and use that.
+The scoring is now material plus PeSTO square tables blended between middlegame and endgame. Things
+that would make it play better without making it slower: a small opening book, late move reductions
+in the search, and evaluation terms for pawn structure and king safety.
